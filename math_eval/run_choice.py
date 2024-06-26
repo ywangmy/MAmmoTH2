@@ -1,4 +1,5 @@
 # Load model directly
+import logging
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import json
@@ -14,6 +15,7 @@ import os
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model", default='', type=str)
+parser.add_argument("--revision", default=None, type=str)
 parser.add_argument("--output", default='', type=str)
 parser.add_argument("--shots", default=0, type=int)
 parser.add_argument("--dtype", default='bfloat16', type=str)
@@ -48,7 +50,7 @@ def run_question_answer(questions: list, groundtruths: list, tasks: list):
     returned_value = []
     rerun_questions = []
     rerun_groundtruths = []
-    for output, question, groundtruth in zip(outputs, questions, groundtruths):
+    for input, output, question, groundtruth in zip(input_strs, outputs, questions, groundtruths):
         if 'print(' in output:
             output = output.split("### Instruction")[0]
             tmp_exec = utils.execute_with_timeout(output)
@@ -56,7 +58,7 @@ def run_question_answer(questions: list, groundtruths: list, tasks: list):
             answer = utils.answer_clean(args.dataset, ('####', 'The answer is'), tmp)
         else:
             answer = utils.answer_clean(args.dataset, ('####', 'The answer is'), output)
-
+        print(f'Input: {input}\nOutput: {output}')
         returned_value.append((question, output, answer, groundtruth))
 
     return returned_value
@@ -66,14 +68,15 @@ if __name__ == "__main__":
     stop_tokens = ["USER:", "ASSISTANT:",  "### Instruction:", "Response:", "<start_of_turn>", "[INST]", "\n\nProblem", "\nProblem", "Problem:", "<|eot_id|>", "####"]
     sampling_params = SamplingParams(temperature=0, top_p=1, max_tokens=args.model_max_length, stop=stop_tokens)
 
-    llm = LLM(model=args.model, tensor_parallel_size=torch.cuda.device_count(), 
+    llm = LLM(model=args.model, revision=args.revision,
+              tensor_parallel_size=torch.cuda.device_count(), 
               dtype=args.dtype, trust_remote_code=True, 
               enable_lora=True if args.lora else False)
     print('Using VLLM, we do not need to set batch size!')
 
     correct, wrong = 0, 0
     if not args.output:
-        filename = args.model.strip('/').split('/')[-1].replace('-', '_')
+        filename = args.model.strip('/').split('/')[-1].replace('-', '_') + f'_{args.revision}'
         if filename.startswith('checkpoint'):
             filename = args.model.strip('/').split('/')[-2].replace('-', '_') + '__' + filename
         filename = filename + '_' + args.dataset
