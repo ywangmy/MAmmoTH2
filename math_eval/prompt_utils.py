@@ -29,6 +29,14 @@ def get_prompt(qas: list, form: str):
         prompt_no_input, prefix = get_llama3_prompt(qas)
     elif form == 'llama3:choice':
         prompt_no_input, prefix = get_llama3_choice_prompt(qas)
+    elif form == 'llama3:choice-fewshot-sys':
+        prompt_no_input, prefix = get_llama3_choice_fewshot_sys_prompt(qas)
+    elif form == 'llama3:choice-fewshot-user':
+        prompt_no_input, prefix = get_llama3_choice_fewshot_user_prompt(qas)
+    elif form == 'qwen':
+        prompt_no_input, prefix = get_qwen_prompt(qas)
+    elif form == 'qwen:choice':
+        prompt_no_input, prefix = get_qwen_choice_prompt(qas)
     else:
         raise NotImplementedError(form)
 
@@ -171,6 +179,29 @@ def get_llama3_choice_prompt(qas: list):
     prefix = '<|start_header_id|>user<|end_header_id|>\n\n{query}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n'
     return tmp, prefix
 
+def get_llama3_choice_fewshot_sys_prompt(qas: list):
+    tmp = """<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful assistant. Provide a detailed solution to the given problem. Ensure that 'The answer is (X)' is included at the conclusion of your response, where X represents the best option."""
+    if len(qas):
+        tmp += '\n\nHere are some examples:'
+        for q, a in qas:
+            tmp += '\nProblem: {query}\nSolution: {response}\n'.format(query=q, response=a)
+    tmp += '<|eot_id|>'
+
+    prefix = '<|start_header_id|>user<|end_header_id|>\n\nProblem: {query}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n'
+    return tmp, prefix
+
+def get_llama3_choice_fewshot_user_prompt(qas: list):
+    tmp = """<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful assistant. Provide a detailed solution to the given problem. Ensure that 'The answer is (X)' is included at the conclusion of your response, where X represents the best option.<|eot_id|>"""
+    tmp += '<|start_header_id|>user<|end_header_id|>\n\n'
+    if len(qas):
+        tmp += "Here are some examples:"
+        for q, a in qas:
+            tmp += f'\nProblem: {q}\nSolution: {a}\n'
+        tmp += '-----' * 10 + '\n'
+    prefix = "Problem: {query}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+
+    return tmp, prefix
+
 # def get_llama3_choice_prompt(qas: list):
 #     tmp = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful assistant. Provide a solution to the given problem. Conclude your response with 'The answer is (X)' as the final answer, where X represents the best option.<|eot_id|>"
 #     for q, a in qas:
@@ -179,6 +210,23 @@ def get_llama3_choice_prompt(qas: list):
 #     prefix = '<|start_header_id|>user<|end_header_id|>\n\n{query}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n'
 #     return tmp, prefix
 
+def get_qwen_prompt(qas: list):
+    tmp = "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n"
+    
+    for q, a in qas:
+        tmp += "<|im_start|>user\n{query}<|im_end|>\n<|im_start|>assistant\n{response}<|im_end|>".format(query=q, response=a)
+
+    prefix = '<|im_start|>user\n{query}<|im_end|>\n<|im_start|>assistant\n'
+    return tmp, prefix
+
+def get_qwen_choice_prompt(qas: list):
+    tmp = "<|im_start|>system\nYou are a helpful assistant. Provide a detailed solution to the given problem. Ensure that 'The answer is (X)' is included at the conclusion of your response, where X represents the best option.<|im_end|>\n"
+    
+    for q, a in qas:
+        tmp += "<|im_start|>user\n{query}<|im_end|>\n<|im_start|>assistant\n{response}<|im_end|>".format(query=q, response=a)
+
+    prefix = '<|im_start|>user\n{query}<|im_end|>\n<|im_start|>assistant\n'
+    return tmp, prefix
 
 def get_short_prompt(qas: list):
     tmp = "You are supposed to provide a solution to a given problem.\n\n"
