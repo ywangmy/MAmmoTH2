@@ -13,7 +13,9 @@ import os
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model", default='', type=str)
+parser.add_argument("--revision", default=None, type=str)
 parser.add_argument("--output", default='', type=str)
+parser.add_argument('--result', default='', type=str)
 parser.add_argument("--dtype", default='bfloat16', type=str)
 parser.add_argument("--dataset", required=True, type=str)
 parser.add_argument("--task", default='.', type=str)
@@ -67,24 +69,30 @@ if __name__ == "__main__":
     stop_tokens = ["USER:", "ASSISTANT:",  "### Instruction:", "Response:", "<start_of_turn>", "[INST]", "\n\nProblem", "\nProblem", "Problem:", "<|eot_id|>", "####"]
     sampling_params = SamplingParams(temperature=0, top_p=1, max_tokens=args.model_max_length, stop=stop_tokens)
 
-    llm = LLM(model=args.model, tensor_parallel_size=torch.cuda.device_count(), 
+    llm = LLM(model=args.model, revision=args.revision,
+              tensor_parallel_size=torch.cuda.device_count(), 
               dtype=args.dtype, trust_remote_code=True, 
               enable_lora=True if args.lora else False)
     print('Using VLLM, we do not need to set batch size!')
 
     correct, wrong = 0, 0
+    filename = args.model.strip('/').split('/')[-1].replace('-', '_') + f'_{args.revision}'
+    if filename.startswith('checkpoint'):
+        filename = args.model.strip('/').split('/')[-2].replace('-', '_') + '_' + filename
+    filename = filename + '_' + args.dataset
+    filename += '_' + f'{args.shots}shots' + '_' + args.form
+    filename += f'_length{args.model_max_length}'
+    filename += f'_task{args.task}'
+
     if not args.output:
-        filename = args.model.strip('/').split('/')[-1].replace('-', '_')
-        if filename.startswith('checkpoint'):
-            filename = args.model.strip('/').split('/')[-2].replace('-', '_') + '__' + filename
-        filename = filename + '_' + args.dataset
-        filename += '_' + f'{args.shots}shots' + '_' + args.form
-        filename += f'_length{args.model_max_length}'
-        filename += f'_task{args.task}'
         args.output = f'outputs/{filename}.jsonl'
         print('Writing the output to', args.output)
+    if not args.result:
+        args.result = f'results/{filename}.json'
+        print('Writing the result to', args.result)
+        os.makedirs(os.path.dirname(args.result), exist_ok=True)
 
-    file_handle = open(args.output, 'w')
+    output_handle = open(args.output, 'w')
     loader = BatchDatasetLoader(args.dataset, -1, args.task)
 
     questions, groundtruths, tasks = loader[0]
@@ -111,7 +119,21 @@ if __name__ == "__main__":
             'task': task
         }
 
-        file_handle.write(json.dumps(example) + '\n')
+        output_handle.write(json.dumps(example) + '\n')
 
-    print('final accuracy: ', correct / (correct + wrong))
-    file_handle.close()
+    print('#' * 20)
+    results = {
+        'model': args.model,
+        'revision': args.revision,
+        'form': args.form,
+        'shots': args.shots,
+        'dataset': args.dataset,
+        'task': args.task,
+        'correct': correct,
+        'wrong': wrong,
+        'accuracy': correct / (correct + wrong),
+    }
+    print(json.dumps(results, indent=4))
+    with open(args.result, 'w') as file:
+        json.dump(results, file, indent=4)
+    output_handle.close()
