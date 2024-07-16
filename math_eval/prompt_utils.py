@@ -1,4 +1,5 @@
 import json
+import re
 
 def get_prompt(qas: list, form: str):
     if form == 'alpaca':
@@ -39,6 +40,8 @@ def get_prompt(qas: list, form: str):
         prompt_no_input, prefix = get_qwen_choice_prompt(qas)
     elif form == 'qwen:choice-fewshot-sys':
         prompt_no_input, prefix = get_qwen_choice_fewshot_sys_prompt(qas)
+    elif form == 'deepseek:fewshot':
+        prompt_no_input, prefix = get_deepseek_fewshot_prompt(qas)
     else:
         raise NotImplementedError(form)
 
@@ -153,6 +156,15 @@ def get_mistral_prompt(qas: list):
 
     return tmp, prefix
 
+def get_mistral_fewshot_prompt(qas: list):
+    tmp = ""
+    for q, a in qas:
+        tmp += '\n' + '[INST] {query} [/INST]{response}\n'.format(query=q, response=a)
+    tmp = tmp.lstrip('\n')
+    
+    prefix = '\n' + '[INST] {query} [/INST]'
+
+    return tmp, prefix
 
 def get_yi_prompt(qas: list):
     tmp = ""
@@ -229,11 +241,23 @@ def get_qwen_choice_fewshot_sys_prompt(qas: list):
         tmp += '\n\nHere are some examples:'
         for q, a in qas:
             tmp += '\nProblem: {query}\nSolution: {response}\n'.format(query=q, response=a)
-        tmp += '<|im_end|>\n'
+    tmp += '<|im_end|>\n'
 
     prefix = '<|im_start|>user\nProblem: {query}<|im_end|>\n<|im_start|>assistant\n'
     return tmp, prefix
 
+def get_deepseek_fewshot_prompt(qas: list):
+    tmp = "User: You are a helpful assistant. Provide a detailed solution to the given problem."
+    if (qas):
+        tmp += '\n\nHere are some examples:'
+        for q, a in qas:
+            cot_q = q.rstrip() + '\nPlease reason step by step, and put your final answer within \\boxed{}.'
+            boxed_a = re.sub(r'The answer is \((.)\)', r'The answer is \\boxed{\1}', a)
+            tmp += '\nProblem: {query}\nSolution: {response}\n'.format(query=cot_q, response=boxed_a)
+    tmp += '\n\n'
+
+    prefix = 'Problem: {query}\nPlease reason step by step, and put your final answer within \\boxed{{}}.\n\n'
+    return tmp, prefix
 
 def get_short_prompt(qas: list):
     tmp = "You are supposed to provide a solution to a given problem.\n\n"
